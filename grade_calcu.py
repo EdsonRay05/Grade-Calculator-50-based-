@@ -99,22 +99,23 @@ def predict_major_exam():
     st.markdown('<div class="section">', unsafe_allow_html=True)
     st.header("Predict Major Exam")
     with st.form("predict_form"):
-        desired_grade = st.number_input("Desired Grade (50-100):", min_value=50.0, max_value=100.0, step=0.1)
+        desired_grade = st.number_input("Desired Grade (0-100):", min_value=0.0, max_value=100.0, step=0.1)
         grade_period = st.selectbox("Grade Period:", ["Prelims", "Midterms", "Finals"])
         class_standing = st.number_input("Class Standing % (0-100):", min_value=0.0, max_value=100.0)
 
         prev_grade = None
         if grade_period != "Prelims":
-            prev_grade = st.number_input("Previous Grade (50-100):", min_value=50.0, max_value=100.0)
+            prev_grade = st.number_input("Previous Grade (0-100):", min_value=0.0, max_value=100.0)
 
         num_questions = st.number_input("Number of Questions:", min_value=1, step=1)
 
         submitted = st.form_submit_button("Calculate")
 
     if submitted:
-        dg = float(desired_grade)
-        cs = float(class_standing)
-        pg = float(prev_grade) if prev_grade is not None else 0.0
+        # Convert zero-based input to 50-based grading scale before calculations
+        dg = desired_grade / 2 + 50
+        cs = class_standing / 2 + 50
+        pg = (prev_grade / 2 + 50) if prev_grade is not None else 0.0
         nq = int(num_questions)
         score_needed = 0.0
 
@@ -133,7 +134,7 @@ def predict_major_exam():
             average_needed = dg - (final_cs + mid_g)
             score_needed = (average_needed / (1.0 / 3.0)) * (nq / 100.0)
 
-        st.markdown(f'<div class="result">You need about {round2(score_needed)} out of {nq} questions to reach grade {dg}.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="result">You need about {round2(score_needed)} out of {nq} questions to reach grade {round2(dg)}.</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -146,14 +147,14 @@ def calculate_overall_grades():
         exam_grade = st.number_input("Exam Grade %:", min_value=0.0, max_value=100.0, step=0.1, key="overall_exam")
         prev_grade = None
         if grade_type != "Preliminary":
-            prev_grade = st.number_input("Previous Grade (50-100):", min_value=50.0, max_value=100.0, step=0.1, key="overall_prev")
+            prev_grade = st.number_input("Previous Grade (0-100):", min_value=0.0, max_value=100.0, step=0.1, key="overall_prev")
 
         submitted = st.form_submit_button("Calculate")
 
     if submitted:
-        cs = float(class_standing)
-        eg = float(exam_grade)
-        pg = float(prev_grade) if prev_grade is not None else 0.0
+        cs = class_standing / 2 + 50
+        eg = exam_grade / 2 + 50
+        pg = (prev_grade / 2 + 50) if prev_grade is not None else 0.0
         raw_grade = 0.0
         if grade_type == "Preliminary":
             raw_grade = cs * 0.5 + eg * 0.5
