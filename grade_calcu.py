@@ -152,8 +152,8 @@ def calculate_overall_grades():
         submitted = st.form_submit_button("Calculate")
 
     if submitted:
-        cs = class_standing / 2 + 50
-        eg = exam_grade / 2 + 50
+        cs = float(class_standing)
+        eg = float(exam_grade)
         pg = (prev_grade / 2 + 50) if prev_grade is not None else 0.0
         raw_grade = 0.0
         if grade_type == "Preliminary":
@@ -278,3 +278,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
