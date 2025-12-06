@@ -98,8 +98,13 @@ def main():
         "Choose Option",
         ["Predict Major Exam Grade", "Calculate Overall Grade", "Calculate Class Standing"],
     )
-    st.write("___")
-    st.markdown("Developed by Edson Ray San Juan")
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(
+        "<div style='font-size: 12px; color: gray;'>"
+        "Developed by <b>Edson Ray San Juan</b>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
     
     if app_mode == "Predict Major Exam Grade":
         numeric_ctx = predict_major_exam_grade()
@@ -317,6 +322,7 @@ def calculate_class_standing():
 
 if __name__ == "__main__":
     main()
+
 
 
 
