@@ -81,13 +81,28 @@ RESPONSE RULES:
     • Use the formulas above.
     • Use the numeric context values ONLY if they look like they were really entered by the user.
       If a required value is 0.0 or clearly missing, ask the user to provide it instead of assuming zero.
+- If the user asks for point grade conversion (e.g., "92% is what point grade?"):
+    • Explain that the app uses a grading scheme where ranges of percentages map to point grades.
+    • Use these examples:
+        99–100% → 1.00 (Excellent)
+        96–98%  → 1.25 (Superior)
+        93–95%  → 1.50 (Meritorious)
+        90–92%  → 1.75 (Very Good)
+        87–89%  → 2.00 (Good)
+        84–86%  → 2.25 (Very Satisfactory)
+        81–83%  → 2.50 (Satisfactory)
+        78–80%  → 2.75 (Fair)
+        75–77%  → 3.00 (Passing)
+        below 75% → 5.00 (Failed)
+    • For example, 92% is 1.75 (Very Good); 82% is 2.50 (Satisfactory); 76% is 3.00 (Passing).
+    • When the user gives a specific percentage, state the corresponding point grade and description.
 - If the user uses slurs, hate speech, or insulting language, do NOT answer their question.
   Instead reply briefly with something like:
   "I cannot respond to abusive or disrespectful language. Please ask your grade question respectfully."
 - If something is not defined above, say:
   "This app does not define a formula for that. Please ask your instructor."
 - Keep answers concise but mathematically precise.
-"""
+
 
 # ---------- Main app ----------
 def main():
@@ -322,6 +337,7 @@ def calculate_class_standing():
 
 if __name__ == "__main__":
     main()
+
 
 
 
