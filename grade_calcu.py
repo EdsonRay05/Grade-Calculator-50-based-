@@ -1,16 +1,13 @@
 import streamlit as st
 from groq import Groq
-import os
 
-# Initialize Groq client from Streamlit secrets (DEPLOYMENT READY)
-try:
-    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-    st.session_state.client_ready = True
-except:
-    client = None
-    st.session_state.client_ready = False
+# --------- Groq client from Streamlit secrets ---------
+@st.cache_resource
+def get_groq_client():
+    # GROQ_API_KEY must be stored in .streamlit/secrets.toml or Streamlit Cloud secrets
+    return Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-# Your existing functions (COMPLETE)
+# --------- Your existing grading helpers ---------
 def grading_scheme(percent_score):
     if 99 <= percent_score <= 100:
         return (1.00, "Excellent")
@@ -40,214 +37,255 @@ def calculate_percentage(score, total):
         return (score / total) * 100
     return 0
 
-def get_context(app_mode):
-    context = f"Grade Calculator - Mode: {app_mode}\n"
-    context += "Formulas:\n"
-    context += "• Prelim: (Class Standing × 0.5) + (Exam × 0.5)\n"
-    context += "• Midterm/Final: (New Partial × 2/3) + (Previous × 1/3)\n"
-    context += "Grading: 75-78%=3.00(Passing), 99-100%=1.00(Excellent)"
-    return context
+# --------- Context + system prompt builder ---------
+def build_system_prompt(app_mode, numeric_context_text=""):
+    return f"""
+You are an expert Grade Calculator Assistant for this Streamlit app.
 
+The app has three modes:
+
+1) PREDICT MAJOR EXAM GRADE
+   • Prelim:
+       prelim_final_grade = 0.5 * prelim_class_standing + 0.5 * prelim_exam_score
+       Given desired_grade and prelim_class_standing, solve for prelim_exam_score.
+   • Mid-Term:
+       midterm_partial = 0.5 * midterm_class_standing + 0.5 * midterm_exam_score
+       midterm_final_grade = (2/3) * midterm_partial + (1/3) * prelim_grade
+       Given desired_grade, midterm_class_standing, prelim_grade, solve for midterm_exam_score.
+   • Final:
+       final_partial = 0.5 * final_class_standing + 0.5 * final_exam_score
+       final_final_grade = (2/3) * final_partial + (1/3) * midterm_grade
+       Given desired_grade, final_class_standing, midterm_grade, solve for final_exam_score.
+
+2) CALCULATE OVERALL GRADE
+   • Prelim_grade   = 0.5 * class_standing + 0.5 * exam_score
+   • Midterm_grade  = (2/3) * (0.5 * class_standing + 0.5 * exam_score) + (1/3) * prelim_grade
+   • Final_grade    = (2/3) * (0.5 * class_standing + 0.5 * exam_score) + (1/3) * midterm_grade
+
+3) CALCULATE CLASS STANDING
+   • For each category:
+        item_percent_i = score_i / total_i * 100
+        category_percent = average(item_percent_i)
+        weighted = category_percent * (percent_equivalent / 100)
+   • Overall_class_standing = sum(weighted for all categories).
+
+Current active mode: {app_mode}.
+Current numeric context (from UI): 
+{numeric_context_text}
+
+RESPONSE RULES:
+- When the user asks for a formula (e.g., "Predict Major Exam Grade formula"), FIRST restate the exact formula(s) for the current mode and period, using the definitions above.
+- When numbers are available, show the step-by-step calculation using them.
+- If something is not defined above, say: "This app does not define a formula for that. Please ask your instructor."
+- Keep answers concise but mathematically precise.
+"""
+
+# --------- Main app ---------
 def main():
-    st.title("🎓 Grade Calculator with AI")
-    
-    # Status indicator
-    if st.session_state.get("client_ready", False):
-        st.sidebar.success("✅ Groq AI Ready (via secrets)")
-    else:
-        st.sidebar.error("❌ Groq API key missing in secrets.toml")
-        st.sidebar.info("**For local testing:** Add to `.streamlit/secrets.toml`:\n``````")
-    
-    # Calculator mode selection
-    app_mode = st.sidebar.radio("📊 Choose Calculator", [
+    st.title("Grade Calculator")
+
+    client = get_groq_client()
+
+    # App mode
+    app_mode = st.sidebar.radio("Choose Option", [
         "Predict Major Exam Grade",
-        "Calculate Overall Grade", 
+        "Calculate Overall Grade",
         "Calculate Class Standing"
     ])
-    
-    # Your ORIGINAL calculators (100% unchanged)
+
+    # Run calculators (unchanged UI logic)
     if app_mode == "Predict Major Exam Grade":
-        predict_major_exam_grade()
+        numeric_ctx = predict_major_exam_grade()
     elif app_mode == "Calculate Overall Grade":
-        calculate_overall_grade()
-    elif app_mode == "Calculate Class Standing":
-        calculate_class_standing()
-    
-    # AI Assistant (GROQ POWERED - works for EVERYONE)
-    st.markdown("---")
+        numeric_ctx = calculate_overall_grade()
+    else:
+        numeric_ctx = calculate_class_standing()
+
+    # --------- AI Assistant ---------
+    st.markdown("___")
     st.header("🤖 AI Grade Assistant")
-    
-    if not st.session_state.get("client_ready", False):
-        st.warning("⚠️ AI disabled. Add `GROQ_API_KEY` to `.streamlit/secrets.toml`")
-        st.info("**Deploy to Streamlit Cloud** → Add key in app settings")
-        return
-    
-    # Chat interface with full history
+
     if "messages" not in st.session_state:
-        st.session_state.messages = [
-            {"role": "assistant", "content": "Hi! I'm your grade calculator expert. Ask me about formulas, what-if scenarios, or grade conversions!"}
-        ]
-    
-    # Display chat history
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-    
-    # Chat input
-    if prompt := st.chat_input("💬 Ask about grades, formulas, or your calculation..."):
-        # Add user message
+        st.session_state.messages = []
+
+    # Show history
+    for m in st.session_state.messages:
+        with st.chat_message(m["role"]):
+            st.markdown(m["content"])
+
+    # Build numeric context text for the system prompt
+    numeric_context_text = "\n".join(f"{k} = {v}" for k, v in numeric_ctx.items())
+
+    if prompt := st.chat_input("Ask about formulas, predictions, or your grades..."):
+        # Store user message
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
-        
-        # Generate Groq response (ultra-fast streaming)
+
         with st.chat_message("assistant"):
-            context = get_context(app_mode)
+            system_prompt = build_system_prompt(app_mode, numeric_context_text)
+
             messages = [
-                {"role": "system", "content": f"""You are an expert Grade Calculator Assistant.
-Current app context: {context}
-
-Help with:
-• Exact grade calculations using app formulas
-• What-if scenarios ("What exam score for 92?")
-• Formula explanations  
-• Grade point conversions
-• Study tips for target grades
-
-Be precise with math. Use official grading scheme."""},
-                *st.session_state.messages  # Full conversation history
+                {"role": "system", "content": system_prompt},
+                # Current numeric context as an explicit user message to make it very visible
+                {"role": "user", "content": f"Here is my current numeric context:\n{numeric_context_text}"},
+                *st.session_state.messages,
             ]
-            
-            try:
-                stream = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",  # Best for math/precision
-                    messages=messages,
-                    temperature=0.1,
-                    stream=True
-                )
-                
-                response_container = st.empty()
-                full_response = ""
-                
-                for chunk in stream:
-                    if chunk.choices[0].delta.content is not None:
-                        full_response += chunk.choices[0].delta.content
-                        response_container.markdown(full_response + "▌")
-                
-                response_container.markdown(full_response)
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
-                
-            except Exception as e:
-                st.error(f"API Error: {str(e)}")
-                st.info("Check your Groq quota at console.groq.com")
-    
-    # Chat controls
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🗑️ Clear Chat", use_container_width=True):
-            st.session_state.messages = [
-                {"role": "assistant", "content": "Chat cleared! Ask me anything about grades."}
-            ]
-            st.rerun()
-    with col2:
-        if st.button("📋 Copy Context", use_container_width=True):
-            context = get_context(app_mode)
-            st.code(context, language="text")
-    
-    st.markdown("---")
-    st.markdown("**Developed by Edson Ray San Juan**")
 
-# YOUR ORIGINAL FUNCTIONS (COMPLETE - unchanged)
+            stream = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                temperature=0.1,
+                stream=True,
+            )
+
+            full = ""
+            placeholder = st.empty()
+            for chunk in stream:
+                delta = chunk.choices[0].delta.content or ""
+                full += delta
+                placeholder.markdown(full + "▌")
+            placeholder.markdown(full)
+
+            st.session_state.messages.append({"role": "assistant", "content": full})
+
+# --------- Your original calculators, now returning numeric context ---------
 def predict_major_exam_grade():
-    st.header("🔮 Predict Major Exam Grade")
-    desired_grade = st.number_input("Desired grade (0-100):", min_value=0.0, max_value=100.0)
-    grade_period = st.selectbox("Period:", ["Prelim", "Mid-Term", "Final"])
-    noq = st.number_input("Exam questions:", min_value=1, step=1)
+    st.header("Predict Major Exam Grade")
+    desired_grade = st.number_input("Enter your desired grade (0-100):", min_value=0.0, max_value=100.0)
+    grade_period = st.selectbox("Grade period:", ["Prelim", "Mid-Term", "Final"])
+    noq = st.number_input("Enter your predicted number of exam questions:", min_value=1, step=1)
+
+    numeric_ctx = {
+        "mode": "Predict Major Exam Grade",
+        "desired_grade": desired_grade,
+        "grade_period": grade_period,
+        "noq": noq,
+    }
 
     if grade_period == "Prelim":
-        cs = st.number_input("Class Standing %:", min_value=0.0, max_value=100.0)
-        if st.button("🎯 Calculate needed score"):
-            cs_weight = cs * 0.5
-            needed_avg = desired_grade - cs_weight
-            needed_score = (needed_avg / 0.5) * (noq / 100)
+        prelim_class_standing = st.number_input("Enter the percentage of your class standing (0-100):", min_value=0.0, max_value=100.0)
+        numeric_ctx["prelim_class_standing"] = prelim_class_standing
+
+        if st.button("Calculate needed Prelim exam score"):
+            prelim_cs = prelim_class_standing * 0.5
+            average = desired_grade - prelim_cs
+            needed_score = (average / 0.5) * (noq / 100)
             if needed_score > noq:
-                st.error(f"❌ Impossible - CS too low for {desired_grade}")
+                st.error(f"Cannot achieve {desired_grade} because Prelim Class Standing is too low.")
             else:
-                st.success(f"🎉 Need **{needed_score:.1f}/{noq}** ({needed_score/noq*100:.1f}%)")
+                st.success(f"The score you need on your exam: {needed_score:.2f} out of {noq}")
+
     elif grade_period == "Mid-Term":
-        cs = st.number_input("Midterm CS %:", min_value=0.0, max_value=100.0)
-        prelim = st.number_input("Prelim Grade:", min_value=0.0, max_value=100.0)
-        if st.button("🎯 Calculate needed score"):
-            cs_w = cs * (1/3); prelim_w = prelim * (1/3)
-            needed_avg = desired_grade - (cs_w + prelim_w)
-            needed_score = (needed_avg / (1/3)) * (noq / 100)
+        midterm_class_standing = st.number_input("Enter your Midterm class standing (0-100):", min_value=0.0, max_value=100.0)
+        prelim_grade = st.number_input("Enter your Prelim Grade (0-100):", min_value=0.0, max_value=100.0)
+        numeric_ctx["midterm_class_standing"] = midterm_class_standing
+        numeric_ctx["prelim_grade"] = prelim_grade
+
+        if st.button("Calculate needed Midterm exam score"):
+            midterm_cs_w = midterm_class_standing * (1/3)
+            prelim_grade_w = prelim_grade * (1/3)
+            average = desired_grade - (midterm_cs_w + prelim_grade_w)
+            needed_score = (average / (1/3)) * (noq / 100)
             if needed_score > noq:
-                st.error("❌ Impossible")
+                reason = "Midterm Class Standing" if midterm_class_standing < prelim_grade else "Prelim Grade"
+                st.error(f"Cannot achieve {desired_grade} because {reason} is too low.")
             else:
-                st.success(f"🎉 Need **{needed_score:.1f}/{noq}**")
-    else:  # Final
-        cs = st.number_input("Final CS %:", min_value=0.0, max_value=100.0)
-        midterm = st.number_input("Midterm Grade:", min_value=0.0, max_value=100.0)
-        if st.button("🎯 Calculate needed score"):
-            cs_w = cs * (1/3); midterm_w = midterm * (1/3)
-            needed_avg = desired_grade - (cs_w + midterm_w)
-            needed_score = (needed_avg / (1/3)) * (noq / 100)
+                st.success(f"Score needed on exam: {needed_score:.2f} out of {noq}")
+
+    elif grade_period == "Final":
+        final_class_standing = st.number_input("Enter your Final class standing (0-100):", min_value=0.0, max_value=100.0)
+        midterm_grade = st.number_input("Enter your Midterm Grade (0-100):", min_value=0.0, max_value=100.0)
+        numeric_ctx["final_class_standing"] = final_class_standing
+        numeric_ctx["midterm_grade"] = midterm_grade
+
+        if st.button("Calculate needed Final exam score"):
+            final_cs_w = final_class_standing * (1/3)
+            midterm_grade_w = midterm_grade * (1/3)
+            average = desired_grade - (final_cs_w + midterm_grade_w)
+            needed_score = (average / (1/3)) * (noq / 100)
             if needed_score > noq:
-                st.error("❌ Impossible")
+                reason = "Final Class Standing" if final_class_standing < midterm_grade else "Midterm Grade"
+                st.error(f"Cannot achieve {desired_grade} because {reason} is too low.")
             else:
-                st.success(f"🎉 Need **{needed_score:.1f}/{noq}**")
+                st.success(f"Score needed on exam: {needed_score:.2f} out of {noq}")
+
+    return numeric_ctx
 
 def calculate_overall_grade():
-    st.header("📊 Calculate Overall Grade")
-    period = st.selectbox("Period:", ["Prelim", "Mid-Term", "Final"])
+    st.header("Calculate Overall Grade")
+    period = st.selectbox("Which period?", ["Prelim", "Mid-Term", "Final"])
+    numeric_ctx = {"mode": "Calculate Overall Grade", "period": period}
+
     if period == "Prelim":
-        cs = st.number_input("Class Standing:", 0.0, 100.0)
-        exam = st.number_input("Exam:", 0.0, 100.0)
-        if st.button("Calculate"):
+        cs = st.number_input("Class Standing:", min_value=0.0, max_value=100.0)
+        exam = st.number_input("Preliminary Exam Score:", min_value=0.0, max_value=100.0)
+        numeric_ctx.update({"cs": cs, "exam": exam})
+        if st.button("Calculate Prelim Grade"):
             grade = (cs * 0.5) + (exam * 0.5)
-            val, desc = grading_scheme(grade)
-            st.success(f"**Grade: {grade:.1f}%** = {val} ({desc})")
+            grade_val, desc = grading_scheme(grade)
+            st.success(f"Your Preliminary Grade: {grade:.2f}")
+            st.info(f"Equivalent Grade: {grade_val:.2f} ({desc})")
+
     elif period == "Mid-Term":
-        cs = st.number_input("Class Standing:", 0.0, 100.0)
-        exam = st.number_input("Exam:", 0.0, 100.0)
-        prelim = st.number_input("Prelim Grade:", 0.0, 100.0)
-        if st.button("Calculate"):
+        cs = st.number_input("Class Standing:", min_value=0.0, max_value=100.0)
+        exam = st.number_input("Mid-Term Exam Score:", min_value=0.0, max_value=100.0)
+        prelim = st.number_input("Preliminary Grade:", min_value=0.0, max_value=100.0)
+        numeric_ctx.update({"cs": cs, "exam": exam, "prelim": prelim})
+        if st.button("Calculate Mid-Term Grade"):
             partial = (cs * 0.5) + (exam * 0.5)
-            grade = (partial * 2/3) + (prelim * 1/3)
-            val, desc = grading_scheme(grade)
-            st.success(f"**Grade: {grade:.1f}%** = {val} ({desc})")
-    else:
-        cs = st.number_input("Class Standing:", 0.0, 100.0)
-        exam = st.number_input("Exam:", 0.0, 100.0)
-        midterm = st.number_input("Midterm Grade:", 0.0, 100.0)
-        if st.button("Calculate"):
+            grade = (partial * (2/3)) + (prelim * (1/3))
+            grade_val, desc = grading_scheme(grade)
+            st.success(f"Your Mid-Term Grade: {grade:.2f}")
+            st.info(f"Equivalent Grade: {grade_val:.2f} ({desc})")
+
+    elif period == "Final":
+        cs = st.number_input("Class Standing:", min_value=0.0, max_value=100.0)
+        exam = st.number_input("Final Exam Score:", min_value=0.0, max_value=100.0)
+        midterm = st.number_input("Mid-Term Grade:", min_value=0.0, max_value=100.0)
+        numeric_ctx.update({"cs": cs, "exam": exam, "midterm": midterm})
+        if st.button("Calculate Final Grade"):
             partial = (cs * 0.5) + (exam * 0.5)
-            grade = (partial * 2/3) + (midterm * 1/3)
-            val, desc = grading_scheme(grade)
-            st.success(f"**Final Grade: {grade:.1f}%** = {val} ({desc})")
+            grade = (partial * (2/3)) + (midterm * (1/3))
+            grade_val, desc = grading_scheme(grade)
+            st.success(f"Your Final Grade: {grade:.2f}")
+            st.info(f"Equivalent Grade: {grade_val:.2f} ({desc})")
+
+    return numeric_ctx
 
 def calculate_class_standing():
-    st.header("📈 Class Standing")
-    categories = ["quiz", "assignment", "seatwork", "activity", "lab", "homework", "recitation"]
-    total_cs = 0
-    
-    for cat in categories:
-        if st.checkbox(f"📚 {cat.title()}", key=cat):
-            n = st.number_input(f"{cat.title()}s:", 1, 20, 1, key=f"n_{cat}")
-            scores = []
-            for i in range(n):
-                score = st.number_input(f"{cat.title()} {i+1} score:", 0.0, key=f"{cat}_s_{i}")
-                total = st.number_input(f"Total:", 1.0, key=f"{cat}_t_{i}")
-                scores.append(calculate_percentage(score, total))
-            
-            avg = sum(scores) / len(scores)
-            weight = st.number_input(f"{cat.title()} weight %:", 0.0, 100.0, key=f"w_{cat}")
-            weighted = avg * (weight / 100)
-            st.info(f"**{cat.title()}: {avg:.1f}%** (weighted: {weighted:.1f}%)")
-            total_cs += weighted
-    
-    if st.button("🎯 Total Class Standing"):
-        st.success(f"**Total: {total_cs:.1f}%**")
+    st.header("Calculate Class Standing")
+    categories = ["quiz", "assignment", "seatwork", "activity", "laboratory", "homework", "recitation"]
+    class_standing = 0
+    numeric_ctx = {"mode": "Calculate Class Standing"}
+
+    for category in categories:
+        has_category = st.checkbox(f"Do you have {category}?", key=category)
+        if has_category:
+            num_items = st.number_input(f"How many {category}s?", min_value=1, step=1, key=f"{category}_count")
+            percentages = []
+            for i in range(int(num_items)):
+                score = st.number_input(f"{category.title()} {i+1} score:", min_value=0.0, key=f"{category}_score_{i}")
+                total = st.number_input(f"{category.title()} {i+1} total:", min_value=1.0, key=f"{category}_total_{i}")
+                perc = calculate_percentage(score, total)
+                percentages.append(perc)
+                st.write(f"Percentage for {category} {i+1}: {perc:.2f}%")
+            overall = sum(percentages) / len(percentages) if percentages else 0
+            percent_equivalent = st.number_input(
+                f"Enter percent equivalent for {category} (0-100):",
+                min_value=0.0, max_value=100.0, key=f"{category}_percent_equiv")
+            final_result = overall * (percent_equivalent / 100)
+            st.info(f"Overall percentage for {category}: {overall:.2f}% (weighted: {final_result:.2f}%)")
+            class_standing += final_result
+            numeric_ctx[f"{category}_overall"] = overall
+            numeric_ctx[f"{category}_weight"] = percent_equivalent
+
+    numeric_ctx["total_class_standing"] = class_standing
+
+    if st.button("Calculate Total Class Standing"):
+        st.success(f"Class standing: {class_standing:.2f}%")
+
+    return numeric_ctx
 
 if __name__ == "__main__":
     main()
