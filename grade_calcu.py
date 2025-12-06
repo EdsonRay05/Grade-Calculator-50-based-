@@ -97,7 +97,7 @@ def main():
     app_mode = st.sidebar.radio(
         "Choose Option",
         ["Predict Major Exam Grade", "Calculate Overall Grade", "Calculate Class Standing"],
-        st.write("___")
+        st.write("___"),
         st.markdown("Developed by Edson Ray San Juan")
 
     )
@@ -318,4 +318,5 @@ def calculate_class_standing():
 
 if __name__ == "__main__":
     main()
+
 
