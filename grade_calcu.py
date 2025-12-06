@@ -102,7 +102,7 @@ RESPONSE RULES:
 - If something is not defined above, say:
   "This app does not define a formula for that. Please ask your instructor."
 - Keep answers concise but mathematically precise.
-
+"""
 
 # ---------- Main app ----------
 def main():
@@ -337,6 +337,7 @@ def calculate_class_standing():
 
 if __name__ == "__main__":
     main()
+
 
 
 
