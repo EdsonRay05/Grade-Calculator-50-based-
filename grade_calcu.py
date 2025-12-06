@@ -74,9 +74,17 @@ Current numeric context (from UI):
 {numeric_context_text}
 
 RESPONSE RULES:
-- When the user asks for a formula (e.g., "Predict Major Exam Grade formula"), FIRST restate the exact formula(s) for the current mode and period, using the definitions above.
-- When numbers are available, show the step-by-step calculation using them.
-- If something is not defined above, say: "This app does not define a formula for that. Please ask your instructor."
+- If the user is just greeting or chatting (e.g., "hi", "hello", "hey"), respond with a short greeting
+  and a one-line description of what you can do. Do NOT perform any calculation.
+- If the user asks about a formula (e.g., "Predict Major Exam Grade formula"),
+  restate ONLY the relevant formula(s) for the current mode and period, using the definitions above.
+- If the user explicitly asks you to compute or predict (words like "compute", "calculate",
+  "what score do I need", "predict", "how many points"), then:
+    • Use the formulas above.
+    • Use the numeric context values ONLY if they look like they were really entered by the user.
+      If a required value is 0.0 or clearly missing, ask the user to provide it instead of assuming zero.
+- If something is not defined above, say:
+  "This app does not define a formula for that. Please ask your instructor."
 - Keep answers concise but mathematically precise.
 """
 
@@ -289,3 +297,4 @@ def calculate_class_standing():
 
 if __name__ == "__main__":
     main()
+
