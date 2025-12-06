@@ -97,6 +97,9 @@ def main():
     app_mode = st.sidebar.radio(
         "Choose Option",
         ["Predict Major Exam Grade", "Calculate Overall Grade", "Calculate Class Standing"],
+        st.write("___")
+        st.markdown("Developed by Edson Ray San Juan")
+
     )
 
     if app_mode == "Predict Major Exam Grade":
@@ -158,9 +161,7 @@ def main():
     with col2:
         st.caption("Clears all messages and starts a new conversation.")
 
-    st.write("___")
-    st.markdown("Developed by Edson Ray San Juan")
-
+    
 # ---------- Your original calculator functions, returning numeric context ----------
 def predict_major_exam_grade():
     st.header("Predict Major Exam Grade")
@@ -317,3 +318,4 @@ def calculate_class_standing():
 
 if __name__ == "__main__":
     main()
+
