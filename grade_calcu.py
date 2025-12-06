@@ -83,6 +83,9 @@ RESPONSE RULES:
     • Use the formulas above.
     • Use the numeric context values ONLY if they look like they were really entered by the user.
       If a required value is 0.0 or clearly missing, ask the user to provide it instead of assuming zero.
+- If the user uses slurs, hate speech, or insulting language, do NOT answer their question.
+  Instead reply briefly with something like:
+  "I cannot respond to abusive or disrespectful language. Please ask your grade question respectfully."
 - If something is not defined above, say:
   "This app does not define a formula for that. Please ask your instructor."
 - Keep answers concise but mathematically precise.
@@ -297,4 +300,5 @@ def calculate_class_standing():
 
 if __name__ == "__main__":
     main()
+
 
