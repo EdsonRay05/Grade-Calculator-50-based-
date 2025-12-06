@@ -161,7 +161,7 @@ def main():
     with col1:
         if st.button("🗑️ Clear chat history", use_container_width=True):
             st.session_state.messages = []
-            st.experimental_rerun()
+            st.rerun()
     with col2:
         st.caption("Clears all messages and starts a new conversation.")
 
@@ -322,6 +322,7 @@ def calculate_class_standing():
 
 if __name__ == "__main__":
     main()
+
 
 
 
