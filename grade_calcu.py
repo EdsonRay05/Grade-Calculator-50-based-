@@ -286,6 +286,41 @@ label[data-testid="stWidgetLabel"] p {
 
 .gc-divider { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 1.8rem 0; }
 
+/* Sidebar nav inactive buttons — plain, no gradient */
+[data-testid="stSidebar"] .stButton > button {
+    background: rgba(255,255,255,0.03) !important;
+    border: 1px solid rgba(255,255,255,0.07) !important;
+    border-radius: 10px !important;
+    color: #6b7494 !important;
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    text-align: left !important;
+    padding: 0.6rem 1rem !important;
+    margin-bottom: 6px !important;
+    transition: all 0.18s !important;
+    letter-spacing: 0 !important;
+    justify-content: flex-start !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    background: rgba(255,255,255,0.06) !important;
+    color: #c0c8e0 !important;
+    transform: none !important;
+    opacity: 1 !important;
+    border-color: rgba(255,255,255,0.12) !important;
+}
+
+/* Chat input — inline, not sticky */
+.stChatInput {
+    position: relative !important;
+    bottom: auto !important;
+}
+[data-testid="stChatInputContainer"] {
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 14px !important;
+    padding: 4px 8px !important;
+}
+
 #MainMenu, footer { visibility: hidden; }
 header[data-testid="stHeader"] { background: transparent; }
 ::-webkit-scrollbar { width: 4px; }
@@ -371,6 +406,10 @@ Refuse hate speech politely. Be concise and precise.
 """
 
 
+# ── Sidebar nav state ──────────────────────────────────────────────────────────
+if "mode_key" not in st.session_state:
+    st.session_state.mode_key = "Predict Exam Score"
+
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
@@ -385,14 +424,33 @@ with st.sidebar:
             Academic Tool · v2.1</p>
     </div>
     """, unsafe_allow_html=True)
-
     st.markdown("<hr style='border-color:rgba(255,255,255,0.05);margin:0.6rem 0 1rem;'>", unsafe_allow_html=True)
+    st.markdown("<p style='font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#2e3858;margin:0 0 0.6rem;'>Select Mode</p>", unsafe_allow_html=True)
 
-    app_mode = st.radio(
-        "SELECT MODE",
-        ["🔮  Predict Exam Score", "📊  Calculate Grade", "📋  Class Standing"],
-    )
-    mode_key = app_mode.split("  ", 1)[1]
+    nav_items = [
+        ("Predict Exam Score", "🔮", "Find the score you need"),
+        ("Calculate Grade",    "📊", "Compute your term grade"),
+        ("Class Standing",     "📋", "Calculate class standing"),
+    ]
+    for nkey, icon, subtitle in nav_items:
+        is_active = st.session_state.mode_key == nkey
+        if is_active:
+            st.markdown(f"""
+            <div style='background:linear-gradient(135deg,rgba(56,100,220,0.22),rgba(20,200,150,0.14));
+                        border:1px solid rgba(56,100,220,0.38); border-radius:10px;
+                        padding:0.6rem 1rem; margin-bottom:6px; cursor:default;'>
+                <div style='display:flex;align-items:center;gap:8px;'>
+                    <span style='font-size:1rem;'>{icon}</span>
+                    <div>
+                        <p style='margin:0;font-size:0.85rem;font-weight:700;color:#dde2f0;'>{nkey}</p>
+                        <p style='margin:0;font-size:0.68rem;color:#5a7090;'>{subtitle}</p>
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            if st.button(f"{icon}  {nkey}", key=f"nav_{nkey}", use_container_width=True):
+                st.session_state.mode_key = nkey
+                st.rerun()
 
     st.markdown("<hr style='border-color:rgba(255,255,255,0.05);margin:1rem 0;'>", unsafe_allow_html=True)
     st.markdown("""
@@ -400,6 +458,8 @@ with st.sidebar:
         Developed by<br>
         <span style='color:#5a6280; font-weight:600;'>Edson Ray San Juan</span>
     </p>""", unsafe_allow_html=True)
+
+mode_key = st.session_state.mode_key
 
 
 # ── Helper: result card ────────────────────────────────────────────────────────
@@ -433,8 +493,8 @@ def predict_major_exam_grade():
     # PRELIM
     with t1:
         st.markdown("<span class='term-pill pill-blue'>Prelim Term</span>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size:0.78rem;color:#5a6280;margin:0.4rem 0 0.8rem;'>💡 Enter a <b>percentage</b> (e.g. 85) or a <b>point grade</b> (e.g. 2.00) — auto-converted.</p>", unsafe_allow_html=True)
         st.markdown("<div class='gc-card'>", unsafe_allow_html=True)
-        st.markdown("<p style='font-size:0.78rem;color:#5a6280;margin:0 0 0.8rem;'>💡 You can enter a <b>percentage</b> (e.g. 85) <i>or</i> a <b>point grade</b> (e.g. 2.00) — it will be auto-converted.</p>", unsafe_allow_html=True)
         c1, c2 = st.columns(2, gap="medium")
         with c1:
             p_des = st.number_input("Desired Prelim Grade (% or point)", 0.0, 100.0, 85.0, 0.5, key="pp_des")
