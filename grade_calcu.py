@@ -316,6 +316,29 @@ def grading_scheme(pct):
 def calc_pct(score, total):
     return (score / total * 100) if total > 0 else 0
 
+# Convert a point grade (1.00–5.00) to its minimum percentage equivalent
+POINT_TO_PCT = {
+    1.00: 99.0, 1.25: 96.0, 1.50: 93.0, 1.75: 90.0,
+    2.00: 87.0, 2.25: 84.0, 2.50: 81.0, 2.75: 78.0,
+    3.00: 75.0, 5.00: 74.0,
+}
+
+def is_point_grade(val):
+    """Return True if value looks like a point grade (1.00–5.00 range)."""
+    return 1.0 <= val <= 5.0 and val not in range(6, 101)
+
+def resolve_desired(val):
+    """
+    If val is a percentage (>5), return it directly.
+    If val looks like a point grade (1.00–5.00), convert to its pct equivalent.
+    Returns (resolved_pct, was_converted, point_val)
+    """
+    if val > 5.0:
+        return val, False, None
+    # round to nearest known point grade
+    closest = min(POINT_TO_PCT.keys(), key=lambda k: abs(k - val))
+    return POINT_TO_PCT[closest], True, closest
+
 
 # ── System prompt ──────────────────────────────────────────────────────────────
 def build_system_prompt(app_mode, ctx_text=""):
@@ -411,21 +434,27 @@ def predict_major_exam_grade():
     with t1:
         st.markdown("<span class='term-pill pill-blue'>Prelim Term</span>", unsafe_allow_html=True)
         st.markdown("<div class='gc-card'>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size:0.78rem;color:#5a6280;margin:0 0 0.8rem;'>💡 You can enter a <b>percentage</b> (e.g. 85) <i>or</i> a <b>point grade</b> (e.g. 2.00) — it will be auto-converted.</p>", unsafe_allow_html=True)
         c1, c2 = st.columns(2, gap="medium")
         with c1:
-            p_des = st.number_input("Desired Prelim Grade (%)", 0.0, 100.0, 85.0, 0.5, key="pp_des")
-            p_noq = st.number_input("No. of Exam Questions",   1, step=1, value=50,    key="pp_noq")
+            p_des = st.number_input("Desired Prelim Grade (% or point)", 0.0, 100.0, 85.0, 0.5, key="pp_des")
+            p_noq = st.number_input("No. of Exam Questions", 1, step=1, value=50, key="pp_noq")
         with c2:
-            p_cs  = st.number_input("Class Standing (%)",      0.0, 100.0, 0.0, 0.5,  key="pp_cs")
+            p_cs  = st.number_input("Class Standing (%)", 0.0, 100.0, 0.0, 0.5, key="pp_cs")
             st.markdown("<div class='formula-box'>final = 0.5 × cs + 0.5 × exam<br>→ exam = (desired − 0.5×cs) / 0.5</div>", unsafe_allow_html=True)
         ctx.update({"prelim_desired": p_des, "prelim_cs": p_cs, "prelim_noq": p_noq})
         st.markdown("</div>", unsafe_allow_html=True)
 
         if st.button("Calculate Needed Prelim Score →", key="btn_pp", use_container_width=True):
-            needed_pct   = (p_des - 0.5 * p_cs) / 0.5
+            p_des_pct, was_conv, pt_val = resolve_desired(p_des)
+            if was_conv:
+                st.markdown(f"<div class='result-warn' style='background:rgba(56,100,220,0.1);border-color:rgba(56,100,220,0.3);color:#7ca4ff;'>ℹ️ Detected point grade <b>{pt_val:.2f}</b> → using <b>{p_des_pct:.0f}%</b> as target.</div>", unsafe_allow_html=True)
+            needed_pct   = (p_des_pct - 0.5 * p_cs) / 0.5
             needed_score = needed_pct * (p_noq / 100)
-            if needed_pct > 100 or needed_score > p_noq:
-                st.markdown(f"<div class='result-warn'>⚠️ Cannot reach {p_des}% — your Class Standing is too low.</div>", unsafe_allow_html=True)
+            if needed_pct < 0:
+                st.markdown(f"<div class='result-warn'>⚠️ Your Class Standing ({p_cs}%) already exceeds the target — you only need to show up and pass!</div>", unsafe_allow_html=True)
+            elif needed_pct > 100 or needed_score > p_noq:
+                st.markdown(f"<div class='result-warn'>⚠️ Cannot reach {p_des_pct:.0f}% — your Class Standing is too low to make it possible.</div>", unsafe_allow_html=True)
             else:
                 st.markdown(f"""
                 <div class='result-pass'>
@@ -438,13 +467,14 @@ def predict_major_exam_grade():
     with t2:
         st.markdown("<span class='term-pill pill-indigo'>Mid-Term</span>", unsafe_allow_html=True)
         st.markdown("<div class='gc-card'>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size:0.78rem;color:#5a6280;margin:0 0 0.8rem;'>💡 You can enter a <b>percentage</b> (e.g. 85) <i>or</i> a <b>point grade</b> (e.g. 2.00) for the desired grade — it will be auto-converted.</p>", unsafe_allow_html=True)
         c1, c2 = st.columns(2, gap="medium")
         with c1:
-            m_des    = st.number_input("Desired Midterm Grade (%)",  0.0, 100.0, 85.0, 0.5, key="pm_des")
-            m_noq    = st.number_input("No. of Exam Questions",      1, step=1, value=50,    key="pm_noq")
+            m_des    = st.number_input("Desired Midterm Grade (% or point)", 0.0, 100.0, 85.0, 0.5, key="pm_des")
+            m_noq    = st.number_input("No. of Exam Questions", 1, step=1, value=50, key="pm_noq")
         with c2:
-            m_cs     = st.number_input("Midterm Class Standing (%)", 0.0, 100.0, 0.0, 0.5,  key="pm_cs")
-            m_prelim = st.number_input("Your Prelim Grade (%)",      0.0, 100.0, 0.0, 0.5,  key="pm_pg")
+            m_cs     = st.number_input("Midterm Class Standing (%)", 0.0, 100.0, 0.0, 0.5, key="pm_cs")
+            m_prelim = st.number_input("Your Prelim Grade (%)",      0.0, 100.0, 0.0, 0.5, key="pm_pg")
         st.markdown("""
         <div class='formula-box'>
             final = (2/3)×(0.5×cs + 0.5×exam) + (1/3)×prelim<br>
@@ -455,11 +485,16 @@ def predict_major_exam_grade():
         st.markdown("</div>", unsafe_allow_html=True)
 
         if st.button("Calculate Needed Midterm Score →", key="btn_pm", use_container_width=True):
-            partial_needed = (m_des - (1/3) * m_prelim) / (2/3)
+            m_des_pct, was_conv, pt_val = resolve_desired(m_des)
+            if was_conv:
+                st.markdown(f"<div class='result-warn' style='background:rgba(56,100,220,0.1);border-color:rgba(56,100,220,0.3);color:#7ca4ff;'>ℹ️ Detected point grade <b>{pt_val:.2f}</b> → using <b>{m_des_pct:.0f}%</b> as target.</div>", unsafe_allow_html=True)
+            partial_needed = (m_des_pct - (1/3) * m_prelim) / (2/3)
             needed_pct     = (partial_needed - 0.5 * m_cs) / 0.5
             needed_score   = needed_pct * (m_noq / 100)
-            if needed_pct > 100 or needed_score > m_noq:
-                st.markdown(f"<div class='result-warn'>⚠️ Cannot reach {m_des}% — your inputs are too low.</div>", unsafe_allow_html=True)
+            if needed_pct < 0:
+                st.markdown(f"<div class='result-warn'>⚠️ Your current inputs already exceed the target — you're on track!</div>", unsafe_allow_html=True)
+            elif needed_pct > 100 or needed_score > m_noq:
+                st.markdown(f"<div class='result-warn'>⚠️ Cannot reach {m_des_pct:.0f}% — your Class Standing or Prelim Grade is too low.</div>", unsafe_allow_html=True)
             else:
                 st.markdown(f"""
                 <div class='result-pass'>
@@ -472,13 +507,14 @@ def predict_major_exam_grade():
     with t3:
         st.markdown("<span class='term-pill pill-green'>Final Term</span>", unsafe_allow_html=True)
         st.markdown("<div class='gc-card'>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size:0.78rem;color:#5a6280;margin:0 0 0.8rem;'>💡 You can enter a <b>percentage</b> (e.g. 85) <i>or</i> a <b>point grade</b> (e.g. 2.00) for the desired grade — it will be auto-converted.</p>", unsafe_allow_html=True)
         c1, c2 = st.columns(2, gap="medium")
         with c1:
-            f_des     = st.number_input("Desired Final Grade (%)",  0.0, 100.0, 85.0, 0.5, key="pf_des")
-            f_noq     = st.number_input("No. of Exam Questions",    1, step=1, value=50,    key="pf_noq")
+            f_des     = st.number_input("Desired Final Grade (% or point)", 0.0, 100.0, 85.0, 0.5, key="pf_des")
+            f_noq     = st.number_input("No. of Exam Questions", 1, step=1, value=50, key="pf_noq")
         with c2:
-            f_cs      = st.number_input("Final Class Standing (%)", 0.0, 100.0, 0.0, 0.5,  key="pf_cs")
-            f_midterm = st.number_input("Your Midterm Grade (%)",   0.0, 100.0, 0.0, 0.5,  key="pf_mg")
+            f_cs      = st.number_input("Final Class Standing (%)", 0.0, 100.0, 0.0, 0.5, key="pf_cs")
+            f_midterm = st.number_input("Your Midterm Grade (%)",   0.0, 100.0, 0.0, 0.5, key="pf_mg")
         st.markdown("""
         <div class='formula-box'>
             final = (2/3)×(0.5×cs + 0.5×exam) + (1/3)×midterm<br>
@@ -489,11 +525,16 @@ def predict_major_exam_grade():
         st.markdown("</div>", unsafe_allow_html=True)
 
         if st.button("Calculate Needed Final Score →", key="btn_pf", use_container_width=True):
-            partial_needed = (f_des - (1/3) * f_midterm) / (2/3)
+            f_des_pct, was_conv, pt_val = resolve_desired(f_des)
+            if was_conv:
+                st.markdown(f"<div class='result-warn' style='background:rgba(56,100,220,0.1);border-color:rgba(56,100,220,0.3);color:#7ca4ff;'>ℹ️ Detected point grade <b>{pt_val:.2f}</b> → using <b>{f_des_pct:.0f}%</b> as target.</div>", unsafe_allow_html=True)
+            partial_needed = (f_des_pct - (1/3) * f_midterm) / (2/3)
             needed_pct     = (partial_needed - 0.5 * f_cs) / 0.5
             needed_score   = needed_pct * (f_noq / 100)
-            if needed_pct > 100 or needed_score > f_noq:
-                st.markdown(f"<div class='result-warn'>⚠️ Cannot reach {f_des}% — your inputs are too low.</div>", unsafe_allow_html=True)
+            if needed_pct < 0:
+                st.markdown(f"<div class='result-warn'>⚠️ Your current inputs already exceed the target — you're on track!</div>", unsafe_allow_html=True)
+            elif needed_pct > 100 or needed_score > f_noq:
+                st.markdown(f"<div class='result-warn'>⚠️ Cannot reach {f_des_pct:.0f}% — your Class Standing or Midterm Grade is too low.</div>", unsafe_allow_html=True)
             else:
                 st.markdown(f"""
                 <div class='result-pass'>
